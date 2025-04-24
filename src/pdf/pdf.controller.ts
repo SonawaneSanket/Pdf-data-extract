@@ -1,18 +1,12 @@
 // src/pdf/pdf.controller.ts
-// src/pdf/pdf.controller.ts
-import {
-  Controller,
-  Post,
-  UploadedFile,
-  UseInterceptors,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { Controller, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { join } from 'path';
 import { PdfService, PageSummary } from './pdf.service';
 import { Express } from 'express';
+import * as fs from 'fs';
+
 
 function uploadInterceptor() {
   return FileInterceptor('file', {
@@ -26,12 +20,8 @@ function uploadInterceptor() {
     }),
     fileFilter: (req, file, cb) => {
       const isPdf = file.mimetype === 'application/pdf';
-      const isImage = file.mimetype.startsWith('image/');
       if (req.originalUrl.endsWith('/summarize') && !isPdf) {
-        return cb(new HttpException('Please upload a PDF file', HttpStatus.BAD_REQUEST), false);
-      }
-      if (req.originalUrl.endsWith('/detect') && !isImage) {
-        return cb(new HttpException('Please upload an image file', HttpStatus.BAD_REQUEST), false);
+        return cb(new Error('Please upload a PDF file'), false);
       }
       cb(null, true);
     },
@@ -42,18 +32,22 @@ function uploadInterceptor() {
 export class PdfController {
   constructor(private readonly pdfService: PdfService) {}
 
-  @Post('summarize')
-  @UseInterceptors(uploadInterceptor())
-  async summarize(@UploadedFile() file: Express.Multer.File): Promise<PageSummary[]> {
-    const pdfPath = join(process.cwd(), file?.path || '');
-    const outputDir = join(process.cwd(), 'uploads');
-    return this.pdfService.convertAndSummarize(pdfPath, outputDir);
-  }
-
-  @Post('detect')
-  @UseInterceptors(uploadInterceptor())
-  async detect(@UploadedFile() file: Express.Multer.File): Promise<{ logos: any[]; objects: any[] }> {
-    const imagePath = join(process.cwd(), file?.path || '');
-    return this.pdfService.rawDetect(imagePath);
-  }
+ // src/pdf/pdf.controller.ts
+@Post('summarize')
+@UseInterceptors(uploadInterceptor())
+async summarize(@UploadedFile() file: Express.Multer.File): Promise<PageSummary[]> {
+  const pdfPath = join(process.cwd(), file.path);
+  
+  // Create unique output directory using file hash
+  const outputDir = join(
+    process.cwd(), 
+    'uploads', 
+    await this.pdfService.getFileHash(pdfPath) // Use PDF hash as directory name
+  );
+  
+  // Ensure directory exists
+  await fs.promises.mkdir(outputDir, { recursive: true });
+  
+  return this.pdfService.convertAndSummarize(pdfPath, outputDir);
+}
 }
