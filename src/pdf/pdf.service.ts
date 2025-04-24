@@ -95,10 +95,34 @@ export class PdfService {
 
     console.log(`Found ${files.length} embedded image(s):`, files);
 
-    const filePaths = files.map((f) => `/files/${fileHash}/${f}`);
-    console.log(`Returning file paths:`, filePaths);
+    const validImagePaths: string[] = [];
 
-    return filePaths;
+    for (const file of files) {
+      const fullPath = join(outputDir, file);
+
+      try {
+        const metadata = await sharp(fullPath).metadata();
+
+        // Skip small images (e.g., icons, UI elements)
+        if ((metadata.width ?? 0) < 50 || (metadata.height ?? 0) < 50) {
+          console.log(
+            `Skipped small image: ${file} (${metadata.width}x${metadata.height})`,
+          );
+          continue;
+        }
+
+        validImagePaths.push(`/files/${fileHash}/${file}`);
+      } catch (err) {
+        console.error(`Failed to read image metadata for ${file}:`, err);
+      }
+    }
+
+    console.log(
+      `Returning ${validImagePaths.length} valid image(s):`,
+      validImagePaths,
+    );
+
+    return validImagePaths;
   }
 
   private async isDuplicateImage(imagePath: string): Promise<boolean> {
@@ -110,7 +134,7 @@ export class PdfService {
     this.processedImageHashes.add(imageHash);
     return false;
   }
-  
+
   async convertAndSummarize(
     pdfPath: string,
     outputDir: string,
