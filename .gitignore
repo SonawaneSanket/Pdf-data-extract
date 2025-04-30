@@ -3,10 +3,9 @@
 /node_modules
 /build
 /uploads
-/processed-images
 
 # Logs
-logs
+logs            
 *.log
 npm-debug.log*
 pnpm-debug.log*
