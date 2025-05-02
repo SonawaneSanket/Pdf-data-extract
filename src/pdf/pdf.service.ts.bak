@@ -34,26 +34,6 @@ export class PdfService {
   private readonly mistralKey = process.env.MISTRAL_API_KEY;
   private readonly visionClient = new ImageAnnotatorClient();
   private readonly processedImageHashes = new Set<string>(); // Track processed image hashes
-  
-  // Method for Google Vision API annotation
-  private async annotate(
-    imgBuffer: Buffer,
-    type: 'LOGO_DETECTION' | 'OBJECT_LOCALIZATION' | 'FACE_DETECTION' | 'LABEL_DETECTION'
-  ): Promise<any> {
-    console.log(`Starting annotation for image buffer. Type: ${type}`);
-
-    try {
-      // First attempt to use Google Vision if available
-      const [result] = await this.visionClient.annotateImage({
-        image: { content: imgBuffer.toString('base64') },
-        features: [{ type: type }],
-      });
-      return result;
-    } catch (err) {
-      console.error(`Error with Vision API: ${(err as Error).message}`);
-      return {};
-    }
-  }
 
   public async getFileHash(filePath: string): Promise<string> {
     const buffer = await fs.promises.readFile(filePath);
@@ -353,7 +333,58 @@ export class PdfService {
     return false;
   }
 
-  // Second callMistral implementation removed - using the more robust one below
+  private async callMistral(text: string): Promise<{ title: string; description: string }> {
+    try {
+      if (!this.mistralKey) {
+        return { 
+          title: "[API key missing]", 
+          description: "Please configure your Mistral API key to get AI summaries." 
+        };
+      }
+
+      const response = await fetch(this.mistralUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.mistralKey}`
+        },
+        body: JSON.stringify({
+          model: 'mistral-large-latest',
+          messages: [
+            {
+              role: 'system',
+              content: 'Extract a concise title and description from the following text. Respond with a JSON object with "title" and "description" fields. Keep the title under 10 words and the description under 50 words.'
+            },
+            { role: 'user', content: text.substring(0, 1000) }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!response.ok) {
+        console.error(`Mistral API error: ${response.status} ${response.statusText}`);
+        return { title: "[Processing Error]", description: "Failed to process text with AI." };
+      }
+
+      const data = await response.json();
+      // Fix type safety issue
+      const jsonData = data as any;
+      const content = jsonData.choices?.[0]?.message?.content || '{}';
+      try {
+        const parsed = JSON.parse(content) as { title?: string; description?: string };
+        return {
+          title: parsed.title || "[No title generated]",
+          description: parsed.description || "[No description generated]"
+        };
+      } catch (parseError) {
+        console.error('Error parsing JSON response:', (parseError as Error).message);
+        return { title: "[Parse Error]", description: "Failed to parse AI response." };
+      }
+    } catch (error) {
+      console.error('Error calling Mistral API:', (error as Error).message);
+      return { title: "[Error]", description: "An error occurred during AI processing." };
+    }
+  }
 
   async convertAndSummarize(
     pdfPath: string,
@@ -848,6 +879,18 @@ export class PdfService {
       `Detection complete. Found ${logos.length} logos, ${photos.length} objects, ${faces.length} faces, and ${scenes.length} scenes.`,
     );
     return { logos, photos, faces, scenes };
+      } else {
+        console.log(`Extracted scene failed validation`);
+        if (fs.existsSync(outputPath)) {
+          fs.unlinkSync(outputPath);
+        }
+      }
+
+      return response;
+    } catch (error) {
+      console.error('Annotation failed:', (error as Error).message);
+      throw error; // Re-throwing the error for further handling if necessary
+    }
   }
 
   private async callMistral(
