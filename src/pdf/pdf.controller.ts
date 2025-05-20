@@ -15,7 +15,7 @@ import * as fs from 'fs';
 function uploadInterceptor() {
   return FileInterceptor('file', {
     storage: diskStorage({
-      destination: './uploads',
+      destination: './uploads', 
       filename: (req, file, cb) => {
         const ts = Date.now();
         const clean = file.originalname.replace(/\s+/g, '_');

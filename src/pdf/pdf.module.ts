@@ -7,6 +7,9 @@ import { PdfService } from './pdf.service';
   controllers: [PdfController],
   providers: [
     PdfService
+  ],
+  exports: [
+    PdfService // Export PdfService so it can be used in other modules
   ]
 })
 export class PdfModule {}
